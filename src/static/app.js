@@ -12,11 +12,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // Clear loading message
       activitiesList.innerHTML = "";
+      activitySelect.innerHTML = '<option value="">-- Select an activity --</option>';
 
       // Populate activities list
       Object.entries(activities).forEach(([name, details]) => {
         const activityCard = document.createElement("div");
         activityCard.className = "activity-card";
+        activityCard.dataset.activityName = name;
 
         const spotsLeft = details.max_participants - details.participants.length;
 
@@ -24,8 +26,41 @@ document.addEventListener("DOMContentLoaded", () => {
           <h4>${name}</h4>
           <p>${details.description}</p>
           <p><strong>Schedule:</strong> ${details.schedule}</p>
-          <p><strong>Availability:</strong> ${spotsLeft} spots left</p>
+          <p class="availability"><strong>Availability:</strong> ${spotsLeft} spots left</p>
+          <div class="participants-section">
+            <strong>Participants</strong>
+            <ul class="participants-list"></ul>
+          </div>
         `;
+
+        activityCard.querySelector(".availability").dataset.maxParticipants = details.max_participants;
+
+        const participantsList = activityCard.querySelector(".participants-list");
+        if (details.participants.length === 0) {
+          const emptyState = document.createElement("li");
+          emptyState.className = "no-participants";
+          emptyState.textContent = "No students signed up yet";
+          participantsList.appendChild(emptyState);
+        } else {
+          details.participants.forEach((participant) => {
+            const participantItem = document.createElement("li");
+            participantItem.dataset.email = participant;
+
+            const participantEmail = document.createElement("span");
+            participantEmail.textContent = participant;
+
+            const removeButton = document.createElement("button");
+            removeButton.type = "button";
+            removeButton.className = "remove-participant";
+            removeButton.dataset.email = participant;
+            removeButton.setAttribute("aria-label", `Remove ${participant}`);
+            removeButton.title = "Remove participant";
+            removeButton.innerHTML = "&#10005;";
+
+            participantItem.append(participantEmail, removeButton);
+            participantsList.appendChild(participantItem);
+          });
+        }
 
         activitiesList.appendChild(activityCard);
 
@@ -62,6 +97,7 @@ document.addEventListener("DOMContentLoaded", () => {
         messageDiv.textContent = result.message;
         messageDiv.className = "success";
         signupForm.reset();
+        await fetchActivities();
       } else {
         messageDiv.textContent = result.detail || "An error occurred";
         messageDiv.className = "error";
@@ -78,6 +114,45 @@ document.addEventListener("DOMContentLoaded", () => {
       messageDiv.className = "error";
       messageDiv.classList.remove("hidden");
       console.error("Error signing up:", error);
+    }
+  });
+
+  activitiesList.addEventListener("click", async (event) => {
+    const removeButton = event.target.closest(".remove-participant");
+    if (!removeButton) return;
+
+    const activityCard = removeButton.closest(".activity-card");
+    const activity = activityCard.dataset.activityName;
+    const email = removeButton.dataset.email;
+
+    try {
+      const response = await fetch(
+        `/activities/${encodeURIComponent(activity)}/signup?email=${encodeURIComponent(email)}`,
+        { method: "DELETE" }
+      );
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.detail || "Unable to remove participant");
+      }
+
+      const participantItem = removeButton.closest("li");
+      const participantsList = participantItem.parentElement;
+      participantItem.remove();
+
+      const availability = activityCard.querySelector(".availability");
+      const participantCount = participantsList.children.length;
+      const maxParticipants = Number(availability.dataset.maxParticipants);
+      availability.innerHTML = `<strong>Availability:</strong> ${maxParticipants - participantCount} spots left`;
+
+      if (participantCount === 0) {
+        const emptyState = document.createElement("li");
+        emptyState.className = "no-participants";
+        emptyState.textContent = "No students signed up yet";
+        participantsList.appendChild(emptyState);
+      }
+    } catch (error) {
+      console.error("Error removing participant:", error);
     }
   });
 
